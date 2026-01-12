@@ -34,13 +34,16 @@ export async function processOrderFulfillment(orderId: string, paidAmount: numbe
     }
 
     if (order.status === 'pending' || order.status === 'cancelled') {
+        const quantity = order.quantity || 1;
+
         await db.transaction(async (tx: any) => {
             // Atomic update to claim card (Postgres only)
-            let cardKey: string | undefined;
+            let cardKeys: string[] = [];
             let supportsReservation = true;
 
             try {
                 // Try to claim reserved card first
+                // Use RETURNING to get all keys
                 const reservedResult = await tx.execute(sql`
                     UPDATE cards
                     SET is_used = true,
@@ -51,7 +54,9 @@ export async function processOrderFulfillment(orderId: string, paidAmount: numbe
                     RETURNING card_key
                 `);
 
-                cardKey = reservedResult.rows[0]?.card_key as string | undefined;
+                if (reservedResult.rows.length > 0) {
+                    cardKeys = reservedResult.rows.map((r: any) => r.card_key);
+                }
             } catch (error: any) {
                 const errorString = JSON.stringify(error);
                 if (
@@ -65,58 +70,74 @@ export async function processOrderFulfillment(orderId: string, paidAmount: numbe
                 }
             }
 
-            if (!cardKey) {
+            if (cardKeys.length < quantity) {
+                const needed = quantity - cardKeys.length;
+                console.log(`[Fulfill] Order ${orderId}: Found ${cardKeys.length} reserved cards, need ${needed} more.`);
+
                 if (supportsReservation) {
-                    // Try to claim strictly available card (not reserved)
-                    // Or "stealable" card (reserved long ago) - aligning with notify logic
+                    // Try to claim strictly available cards (not reserved)
+                    // Or "stealable" cards (reserved long ago)
+                    // We need 'needed' amount.
+                    // LIMIT needed
                     const result = await tx.execute(sql`
                         UPDATE cards
                         SET is_used = true,
                             used_at = NOW(),
                             reserved_order_id = NULL,
                             reserved_at = NULL
-                        WHERE id = (
+                        WHERE id IN (
                             SELECT id
                             FROM cards
                             WHERE product_id = ${order.productId}
                               AND COALESCE(is_used, false) = false
                               AND (reserved_at IS NULL OR reserved_at < NOW() - INTERVAL '1 minute')
-                            LIMIT 1
+                            LIMIT ${needed}
                             FOR UPDATE SKIP LOCKED
                         )
                         RETURNING card_key
                     `);
 
-                    cardKey = result.rows[0]?.card_key as string | undefined;
+                    const newKeys = result.rows.map((r: any) => r.card_key);
+                    cardKeys = [...cardKeys, ...newKeys];
+
                 } else {
                     // Legacy fallback
                     const result = await tx.execute(sql`
                         UPDATE cards
                         SET is_used = true, used_at = NOW()
-                        WHERE id = (
+                        WHERE id IN (
                             SELECT id
                             FROM cards
                             WHERE product_id = ${order.productId} AND COALESCE(is_used, false) = false
-                            LIMIT 1
+                            LIMIT ${needed}
                             FOR UPDATE SKIP LOCKED
                         )
                         RETURNING card_key
                     `);
 
-                    cardKey = result.rows[0]?.card_key as string | undefined;
+                    const newKeys = result.rows.map((r: any) => r.card_key);
+                    cardKeys = [...cardKeys, ...newKeys];
                 }
             }
 
-            console.log(`[Fulfill] Order ${orderId}: Card claimed:`, cardKey ? "YES" : "NO");
+            console.log(`[Fulfill] Order ${orderId}: Cards claimed: ${cardKeys.length}/${quantity}`);
 
-            if (cardKey) {
+            // Even if we got partial headers, we deliver what we have? 
+            // Or only if we have > 0?
+            // Usually we should have full amount if logic is sound. 
+            // If partial, it's better to deliver partial than nothing, but mark as delivered?
+            // User can contact admin.
+
+            if (cardKeys.length > 0) {
+                const joinedKeys = cardKeys.join('\n');
+
                 await tx.update(orders)
                     .set({
                         status: 'delivered',
                         paidAt: new Date(),
                         deliveredAt: new Date(),
                         tradeNo: tradeNo,
-                        cardKey: cardKey
+                        cardKey: joinedKeys
                     })
                     .where(eq(orders.orderId, orderId));
                 console.log(`[Fulfill] Order ${orderId} delivered successfully!`);

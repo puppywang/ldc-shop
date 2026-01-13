@@ -13,8 +13,11 @@ export default async function Home() {
     const errorString = JSON.stringify(error);
     const isTableMissing =
       error.message?.includes('does not exist') ||
+      error.message?.includes('no such table') ||  // D1/SQLite error
       error.cause?.message?.includes('does not exist') ||
+      error.cause?.message?.includes('no such table') ||  // D1/SQLite error
       errorString.includes('42P01') || // PostgreSQL error code for undefined_table
+      errorString.includes('no such table') || // D1/SQLite in stringified error
       errorString.includes('relation') && errorString.includes('does not exist');
 
     if (isTableMissing) {
@@ -61,13 +64,23 @@ export default async function Home() {
           delivered_at INTEGER,
           user_id TEXT,
           username TEXT,
+          points_used INTEGER DEFAULT 0,
+          quantity INTEGER DEFAULT 1 NOT NULL,
+          current_payment_id TEXT,
           created_at INTEGER DEFAULT (unixepoch() * 1000)
         );
         CREATE TABLE IF NOT EXISTS login_users (
           user_id TEXT PRIMARY KEY,
           username TEXT,
+          points INTEGER DEFAULT 0 NOT NULL,
+          is_blocked INTEGER DEFAULT 0,
           created_at INTEGER DEFAULT (unixepoch() * 1000),
           last_login_at INTEGER DEFAULT (unixepoch() * 1000)
+        );
+        CREATE TABLE IF NOT EXISTS daily_checkins (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id TEXT NOT NULL REFERENCES login_users(user_id) ON DELETE CASCADE,
+          created_at INTEGER DEFAULT (unixepoch() * 1000)
         );
         -- Note: ALTER TABLE ADD COLUMN IF NOT EXISTS is not supported in SQLite
         -- All columns are already defined in CREATE TABLE above

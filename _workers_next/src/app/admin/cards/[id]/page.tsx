@@ -1,13 +1,13 @@
 import { db } from "@/lib/db"
 import { cards } from "@/lib/db/schema"
 import { desc, sql } from "drizzle-orm"
-import { getProduct } from "@/lib/db/queries"
+import { getProductForAdmin } from "@/lib/db/queries"
 import { notFound } from "next/navigation"
 import { CardsContent } from "@/components/admin/cards-content"
 
 export default async function CardsPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
-    const product = await getProduct(id)
+    const product = await getProductForAdmin(id)
     if (!product) return notFound()
 
     // Get Unused Cards

@@ -53,7 +53,7 @@ export async function SiteHeader() {
 
     return (
         <header className="sticky top-0 z-40 w-full border-b border-border/20 bg-gradient-to-b from-background/90 via-background/70 to-background/55 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70">
-            <div className="container flex h-16 items-center gap-3">
+            <div className="container flex h-16 items-center gap-2 md:gap-3">
                 <div className="flex items-center gap-4 md:gap-8 min-w-0">
                     <HeaderLogo adminName={firstAdminName} shopNameOverride={shopNameOverride} shopLogoOverride={shopLogoOverride} />
                     <HeaderNav isAdmin={isAdmin} isLoggedIn={!!user} />
@@ -62,7 +62,7 @@ export async function SiteHeader() {
                     {/* HeaderSearch removed as per user request */}
                 </div>
                 <div className="flex items-center justify-end gap-2 md:gap-3">
-                    <nav className="flex items-center space-x-2 rounded-full border border-border/20 bg-muted/20 px-2 py-1">
+                    <nav className="flex items-center space-x-1 rounded-full border border-border/20 bg-muted/20 px-1.5 py-1 md:px-2">
                         {user && <CheckInButton enabled={checkinEnabled} />}
                         <LanguageSwitcher />
                         <ModeToggle />

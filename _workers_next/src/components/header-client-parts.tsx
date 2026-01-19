@@ -27,7 +27,7 @@ export function HeaderLogo({ adminName, shopNameOverride, shopLogoOverride }: { 
                     <ShoppingBag className="h-4 w-4 text-background" />
                 </div>
             )}
-            <span className="text-sm font-semibold tracking-tight truncate max-w-[140px] sm:max-w-[220px] md:max-w-none">
+            <span className="text-xs sm:text-sm font-semibold tracking-tight truncate max-w-[160px] sm:max-w-[220px] md:max-w-none">
                 {override || shopName}
             </span>
         </Link>

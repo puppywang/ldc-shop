@@ -6,7 +6,7 @@ import { revalidateTag } from "next/cache";
 // Database initialization state
 let dbInitialized = false;
 let wishlistTablesReady = false;
-const CURRENT_SCHEMA_VERSION = 7;
+const CURRENT_SCHEMA_VERSION = 8;
 
 async function safeAddColumn(table: string, column: string, definition: string) {
     try {

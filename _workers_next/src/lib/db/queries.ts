@@ -524,35 +524,58 @@ export async function getWishlistItems(userId: string | null, limit = 10) {
     await ensureDatabaseInitialized();
     await ensureWishlistTables();
 
-    const uid = userId || '';
-    const votesExpr = sql<number>`(SELECT COUNT(*) FROM wishlist_votes v WHERE v.item_id = ${wishlistItems.id})`;
-    const votedExpr = userId
-        ? sql<number>`EXISTS(SELECT 1 FROM wishlist_votes v WHERE v.item_id = ${wishlistItems.id} AND v.user_id = ${uid})`
-        : sql<number>`0`;
-
-    const rows = await db
+    const items = await db
         .select({
             id: wishlistItems.id,
             title: wishlistItems.title,
             description: wishlistItems.description,
             username: wishlistItems.username,
             createdAt: wishlistItems.createdAt,
-            votes: votesExpr,
-            voted: votedExpr
         })
         .from(wishlistItems)
-        .orderBy(desc(votesExpr), desc(wishlistItems.createdAt))
+        .orderBy(desc(wishlistItems.createdAt))
         .limit(limit);
 
-    return rows.map((row: any) => ({
-        id: Number(row.id),
-        title: row.title,
-        description: row.description,
-        username: row.username,
-        createdAt: Number(row.createdAt ?? 0),
-        votes: Number(row.votes ?? 0),
-        voted: Boolean(row.voted)
-    }));
+    if (!items.length) {
+        return [];
+    }
+
+    const ids = items.map((row) => Number(row.id)).filter(Boolean);
+
+    const voteRows = await db
+        .select({
+            itemId: wishlistVotes.itemId,
+            count: sql<number>`COUNT(*)`
+        })
+        .from(wishlistVotes)
+        .where(inArray(wishlistVotes.itemId, ids))
+        .groupBy(wishlistVotes.itemId);
+
+    const voteMap = new Map<number, number>();
+    for (const row of voteRows) {
+        voteMap.set(Number(row.itemId), Number(row.count || 0));
+    }
+
+    let votedSet = new Set<number>();
+    if (userId) {
+        const userVotes = await db
+            .select({ itemId: wishlistVotes.itemId })
+            .from(wishlistVotes)
+            .where(and(inArray(wishlistVotes.itemId, ids), eq(wishlistVotes.userId, userId)));
+        votedSet = new Set(userVotes.map((row) => Number(row.itemId)));
+    }
+
+    return items
+        .map((row: any) => ({
+            id: Number(row.id),
+            title: row.title,
+            description: row.description,
+            username: row.username,
+            createdAt: Number(row.createdAt ?? 0),
+            votes: voteMap.get(Number(row.id)) || 0,
+            voted: votedSet.has(Number(row.id))
+        }))
+        .sort((a, b) => (b.votes - a.votes) || (b.createdAt - a.createdAt));
 }
 
 export async function getProduct(id: string) {
@@ -1213,6 +1236,16 @@ async function ensureWishlistTables() {
         );
         CREATE UNIQUE INDEX IF NOT EXISTS wishlist_votes_item_user_uq ON wishlist_votes(item_id, user_id);
     `);
+
+    await ensureWishlistColumns();
+}
+
+async function ensureWishlistColumns() {
+    await safeAddColumn('wishlist_items', 'description', 'TEXT');
+    await safeAddColumn('wishlist_items', 'user_id', 'TEXT');
+    await safeAddColumn('wishlist_items', 'username', 'TEXT');
+    await safeAddColumn('wishlist_items', 'created_at', 'INTEGER');
+    await safeAddColumn('wishlist_votes', 'created_at', 'INTEGER');
 }
 
 async function isLoginUsersBackfilled(): Promise<boolean> {

@@ -92,6 +92,16 @@
 
 ## 🚀 部署指南
 
+### 定时清理与免费版 CPU
+
+`worker-entry.mjs` 的每分钟定时任务直接通过原生 D1 绑定运行 `scheduled-cleanup.mjs`，不进入 Next.js HTTP 路由，也不执行表结构检查。5 分钟未支付取消、库存释放、过期卡密删除及共享卡密库存规则保持一致。原有受密钥保护的清理 HTTP 接口仍可手动调用。
+
+空闲时只执行两条索引查询，不写入清理时间。每批最多处理 40 条过期卡密和 40 个过期订单，每次最多 4 批；积压留待后续每分钟触发继续处理。每批删除、解锁、取消与库存更新使用 D1 原子 batch，失败全部回滚；更新前再次检查订单状态，保护已完成支付的订单。定时任务失败会如实记录为失败。
+
+已有数据库需已完成应用初始化，包含 `cards_expires_at_idx`、`orders_status_created_at_idx`、`cards_reserved_order_idx` 和 `cards_product_used_reserved_idx` 索引。定时清理不再负责执行数据库迁移。部署无需新增绑定或密钥，Cron 表达式保持 `* * * * *`。
+
+开发验证（Node.js 22+）：在 `_workers_next` 下运行 `npm ci`、`npm test` 和 `npx opennextjs-cloudflare build`。测试包含真实 SQLite 状态校验、并发/支付竞争、批次失败回滚以及 Wrangler 自带 workerd 的原生 D1 验证。上线后在 Workers Logs 筛选 `$workers.eventType = cron`，观察 `cpuTimeMs` 和 `outcome`；本地测试无法替代线上 CPU 计量。
+
 ### 网页部署 (Workers Builds)
 
 无需命令行，完全在 Cloudflare Dashboard 操作。

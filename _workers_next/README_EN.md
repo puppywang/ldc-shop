@@ -99,6 +99,16 @@ To offer the same product in multiple variants (e.g. monthly / yearly) with diff
 
 ## 🚀 Deployment Guide
 
+### Scheduled cleanup and free-tier CPU
+
+The per-minute handler in `worker-entry.mjs` runs `scheduled-cleanup.mjs` directly through the native D1 binding, without the Next.js HTTP route or schema checks. It retains the five-minute pending-order timeout, reservation release, expired-card deletion and shared-card inventory rules. The authenticated cleanup HTTP endpoint remains available for manual use.
+
+Idle ticks only run two indexed reads and do not write a cleanup timestamp. Each batch handles up to 40 expired cards and 40 orders, with at most four batches per tick; subsequent ticks drain any backlog. D1 atomically commits deletion, reservation release, cancellation and stock counters, or rolls them all back. Status is rechecked at write time to protect completed payments, and scheduled failures are propagated.
+
+The database must already be initialized with the existing `cards_expires_at_idx`, `orders_status_created_at_idx`, `cards_reserved_order_idx` and `cards_product_used_reserved_idx` indexes. Cron does not run migrations. No new bindings or secrets are required; the cron expression remains `* * * * *`.
+
+For validation with Node.js 22+, run `npm ci`, `npm test` and `npx opennextjs-cloudflare build` under `_workers_next`. Tests cover actual SQLite state, overlapping ticks, payment races, atomic rollback and native D1 via Wrangler's workerd runtime. After deployment, filter Workers Logs by `$workers.eventType = cron` and inspect `cpuTimeMs` and `outcome`; local tests do not measure production CPU billing.
+
 ### Web Deploy (Workers Builds)
 
 No command line needed—everything in the Cloudflare Dashboard.

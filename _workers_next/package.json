@@ -3,6 +3,7 @@
   "version": "1.4.1",
   "private": true,
   "scripts": {
+    "test": "node --experimental-vm-modules --test tests/*.test.mjs",
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
